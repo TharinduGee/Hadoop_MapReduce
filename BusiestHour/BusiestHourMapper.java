@@ -26,34 +26,54 @@ public class BusiestHourMapper extends Mapper<LongWritable, Text, Text, IntWrita
      private static final int STARTED_AT_IDX = 2;
      private static final int START_STATION_NAME_IDX = 4;
      private static final DateTimeFormatter CSV_DATE_TIME_FORMATTER =
-            DateTimeFormatter.ofPattern("M/d/yyyy h:mm:ss a", Locale.ENGLISH);
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
 
      @Override
      protected void setup(Context context) throws IOException, InterruptedException {
-          // Setup the top stations as distributed cash for the mapper
-          URI[] cacheFiles = context.getCacheFiles();
-          if (cacheFiles != null && cacheFiles.length > 0) {
-               for (URI cacheFile : cacheFiles) {
-                    // File name shoud be end with top_stations.txt
-                    if (cacheFile.getPath().endsWith("top_stations.txt")) {
-                         Path filePath = new Path(cacheFile.getPath());
-                         BufferedReader reader = new BufferedReader(new FileReader(filePath.toString()));
-                         String line;
-                         while ((line = reader.readLine()) != null) {
-                         topStations.add(line.trim());
-                         }
-                         reader.close();
-                         break;
+        URI[] cacheFiles = context.getCacheFiles(); // Get all cache file URIs
+        if (cacheFiles != null && cacheFiles.length > 0) {
+            for (URI cacheFileUri : cacheFiles) {
+                String symlinkName = new Path(cacheFileUri).getName();
+
+                // Use the URI fragment directly if available and what we expect
+                String fragment = cacheFileUri.getFragment();
+                if (fragment != null && fragment.equals("top_stations.txt")) {
+                    symlinkName = fragment;
+                } else if (!symlinkName.equals("top_stations.txt")) {
+                    // This check helps if multiple files are in cache.
+                    System.out.println("Inspecting cache file URI: " + cacheFileUri
+                     + ", symlinkName based on path: " + new Path(cacheFileUri).getName() + ", fragment: " + fragment);
+                    if (! (new Path(cacheFileUri).getName().equals("top_stations.txt") 
+                    || (fragment != null && fragment.equals("top_stations.txt")) ) ) {
+                        continue;
                     }
-               }
-          } else {
-               throw new IOException("Distributed Cache file 'top_stations.txt' not found.");
-          }
-          if (topStations.isEmpty()){
-               System.err.println("Top stations set is empty.");
-          } else {
-               System.out.println("Loaded " + topStations.size() + " top stations from cache.");
-          }
+                    if (fragment == null) {
+                        symlinkName = new Path(cacheFileUri).getName();
+                    }
+                }
+
+
+                System.out.println("Attempting to read from cached file (symlink): " + symlinkName);
+                BufferedReader reader = new BufferedReader(new FileReader(symlinkName)); 
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    topStations.add(line.trim());
+                    System.out.println("Loaded from cache: " + line.trim()); 
+                }
+                reader.close();
+                System.out.println("Finished reading from symlink: " + symlinkName);
+                break; 
+            }
+        } else {
+            throw new IOException("No files found in Distributed Cache.");
+        }
+
+        if (topStations.isEmpty()) {
+            System.err.println("Error: Top stations set is empty.");
+            throw new IOException("Error: Top stations set is empty.");
+        } else {
+            System.out.println("Loaded " + topStations.size() + " top stations from cache.");
+        }
      }
 
      @Override
